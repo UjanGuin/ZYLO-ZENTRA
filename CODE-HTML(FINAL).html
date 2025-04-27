@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cobot Control</title>
+  <style>
+    /* General Styles */
+    body {
+
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      transition: all 0.3s ease;
+      border: none;
+      border-radius: 5px;
+      background-color: #007BFF;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      transform: scale(1.1);
+      background-color: #0056b3;
+      box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    button:active {
+      transform: scale(0.95);
+      box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.3);
+    }
+    #status {
+      margin-top: 10px;
+      color: blue;
+      text-align: center;
+    }
+    #distanceBox {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      width: 200px;
+      font-weight: bold;
+      color: red;
+      text-align: center;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    /* QR Mapping Dialog */
+    #qrMappingContainer {
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #aaa;
+      background-color: #f9f9f9;
+      width: 100%;
+      max-width: 300px;
+      display: none;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    #qrMappingContainer input {
+      margin: 5px 0;
+      padding: 5px;
+      width: 90%;
+    }
+    #qrMappingContainer button {
+      margin: 5px 0;
+      padding: 5px 10px;
+    }
+    #currentMapping {
+      margin-top: 10px;
+      font-size: 0.9em;
+      color: green;
+      text-align: center;
+    }
+    /* Speed Details Container */
+    #speedDetailsContainer {
+      margin-top: 20px;
+      display: none;
+      text-align: center;
+    }
+    #currentSpeedBox {
+      padding: 10px;
+      border: 1px solid #007BFF;
+      background-color: #e7f1ff;
+      width: 100%;
+      max-width: 250px;
+      font-weight: bold;
+      font-size: 18px;
+      color: #007BFF;
+      text-align: center;
+      margin: 0 auto 20px;
+    }
+    /* Speed Graph Container */
+    #speedChartContainer {
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    canvas {
+      background-color: #f5f5f5;
+      border: 1px solid #ccc;
+    }
+    /* Manual Controls */
+    #manualControls {
+      display: none;
+      text-align: center;
+    }
+    #manualControls button {
+      margin: 5px;
+    }
+    /* Object Controls */
+    #objectControls {
+      display: none;
+      text-align: center;
+    }
+    /* Lidar Servo Control */
+    #lidarServoControl {
+      display: none;
+      text-align: center;
+    }
+    /* Video Element */
+    #videoStream {
+      width: 100%;
+      max-width: 900px;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 24px;
+      }
+      button {
+        width: 100%;
+        margin: 5px 0;
+      }
+      #manualControls button {
+        width: 45%;
+      }
+      #qrMappingContainer {
+        width: 90%;
+      }
+      #currentSpeedBox {
+        width: 90%;
+      }
+      #speedChartContainer {
+        width: 90%;
+      }
+      #videoStream {
+        width: 100%;
+        height: auto;
+      }
+    }
+    @media (max-width: 480px) {
+      h1 {
+        font-size: 20px;
+      }
+      button {
+        font-size: 14px;
+      }
+      #manualControls button {
+        width: 100%;
+      }
+      #qrMappingContainer {
+        width: 100%;
+      }
+      #currentSpeedBox {
+        width: 100%;
+      }
+      #speedChartContainer {
+        width: 100%;
+      }
+    }
+  </style>
+  <!-- Include Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div id="authContainer" style="text-align: center; margin-bottom: 20px;">
+   <input type="password" id="authPassword" placeholder="Enter Access Password" />
+   <button onclick="authenticate()">Connect</button>
+  </div>
+  <h1>Cobot Control</h1>
+  <!-- Video element: the remote stream from the server will be attached here -->
+  <video id="videoStream" width="640" autoplay muted></video><br>
+  
+  <button onclick="scanQR()">Scan QR</button>
+  <div id="qrResult">QR Result: --</div>
+  <button id="captureImageBtn">Capture Image</button>
+  
+  <!-- Mode selection buttons -->
+  <button onclick="activateMode('follow_me')">Follow Me</button>
+  <button onclick="activateMode('manual_control')">Manual Control</button>
+  <button onclick="activateMode('follow_object')">Follow Object (Voice)</button>
+  <button onclick="activateMode('factory_mode')">Factory Mode</button>
+  <button onclick="sendCommand('stop')">Stop</button>
+  <button onclick="sendCommand('returnToStart')">Return to Start</button>
+  <button onclick="toggleSpeedDetails()">Speed</button>
+  
+  <div id="sensorData" style="margin-top:20px; font-size:18px; color: green;">
+    Loading sensor data...
+  </div>
+  
+  <!-- Manual Control Buttons -->
+  <div id="manualControls" style="display: none;">
+    <button onclick="sendCommand('forward')">Forward</button>
+    <button onclick="sendCommand('backward')">Backward</button>
+    <button onclick="sendCommand('left')">Left</button>
+    <button onclick="sendCommand('right')">Right</button>
+    <button onclick="sendCommand('stop')">Stop</button>
+    <!-- Speed Control -->
+    <label for="speedRange">Speed:</label>
+    <input type="range" id="speedRange" min="0" max="255" value="0" onchange="updateMotorSpeed(this.value)" />
+    <!-- Servo Control (Pan/Tilt) -->
+    <label for="panRange">Pan:</label>
+    <input type="range" id="panRange" min="0" max="180" value="90" onchange="updatePan(this.value)" /><br />
+    <label for="tiltRange">Tilt:</label>
+    <input type="range" id="tiltRange" min="0" max="180" value="90" onchange="updateTilt(this.value)" />
+  </div>
+  
+  <!-- Lidar Servo Control Indicator -->
+  <div id="lidarServoControl" style="display: none;">
+    <label for="lidarServoRange">Lidar Servo:</label>
+    <input type="range" id="lidarServoRange" min="0" max="180" value="90" onchange="updateLidarServo(this.value)" />
+  </div>
+  
+  <!-- Follow Object Selection -->
+  <div id="objectControls" style="display: none;">
+    <label for="objectSelect">Select Object:</label>
+    <select id="objectSelect" onchange="selectObject()">
+      <option value="">--Select Object--</option>
+    </select>
+  </div>
+  
+  <!-- Measure Distance Button -->
+  <button onclick="measureDistance()">Measure Distance</button>
+  <!-- Distance Display Box -->
+  <div id="distanceBox">Distance: -- cm</div>
+  <!-- Status Display -->
+  <div id="status">Connecting to Cobot...</div>
+  
+  <!-- QR Mapping Dialog (visible in factory mode) -->
+  <div id="qrMappingContainer">
+    <h3>QR Mapping</h3>
+    <label for="pValue">P Value:</label><br>
+    <input type="text" id="pValue" placeholder="e.g., p1" /><br>
+    <label for="aValue">A Value:</label><br>
+    <input type="text" id="aValue" placeholder="e.g., a1" /><br>
+    <button onclick="addMapping()">Add Mapping</button>
+    <button onclick="updateMapping()">Update Mapping</button>
+    <div id="mappingStatus"></div>
+    <div id="currentMapping"></div>
+  </div>
+  
+  <!-- Container for Speed Details (hidden by default) -->
+  <div id="speedDetailsContainer">
+    <!-- Current Speed Box -->
+    <div id="currentSpeedBox">Current Speed: 0.00 m/s</div>
+    <!-- Speed Graph -->
+    <div id="speedChartContainer">
+      <canvas id="speedChart" width="800" height="400"></canvas>
+    </div>
+  </div>
+  
+  <!-- NEW: Color Picker Section -->
+  <div style="text-align: center; margin-top: 20px;">
+    <label for="lowerColor">Lower Color:</label>
+    <input type="color" id="lowerColor" value="#ff0000">
+    <label for="upperColor">Upper Color:</label>
+    <input type="color" id="upperColor" value="#ff6666">
+    <button onclick="updateColor()">Update Color</button>
+  </div>
+  
+  <script>
+    // --- WebRTC Setup ---
+    let pc;
+    let dataChannel;
+    const remoteStream = new MediaStream();
+    const video = document.getElementById("videoStream");
+
+    async function startWebRTC() {
+      pc = new RTCPeerConnection();
+      dataChannel = pc.createDataChannel("control");
+      dataChannel.onopen = () => {
+        document.getElementById("status").innerText = "WebRTC DataChannel connected";
+      };
+      dataChannel.onmessage = (event) => {
+        try {
+          const message = event.data;
+          if (message.startsWith("qrScanResult:")) {
+            document.getElementById("qrResult").innerText = "QR Result: " + message.split(":")[1];
+          } else if (message.startsWith("distance:")) {
+            document.getElementById("distanceBox").innerText = "Distance: " + message.split(":")[1] + " cm";
+          } else {
+            console.log("Received message:", message);
+          }
+        } catch(err) {
+          console.error("Error processing message:", err);
+        }
+      };
+
+      pc.ontrack = (event) => {
+        remoteStream.addTrack(event.track);
+        video.srcObject = remoteStream;
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const response = await fetch("/offer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sdp: pc.localDescription.sdp,
+          type: pc.localDescription.type
+        })
+      });
+      const answer = await response.json();
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    }
+    startWebRTC().catch(console.error);
+
+    // --- Command and Control Functions ---
+    let motorSpeed = 0;
+    let panAngle = 90;
+    let tiltAngle = 90;
+    let speedInterval;
+    function hmacSHA256(message, secret) {
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(secret);
+      return crypto.subtle.importKey(
+        "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+      ).then(key => crypto.subtle.sign("HMAC", key, encoder.encode(message)));
+    }
+
+    async function sendCommand(command) {
+      if (!authorized || !dataChannel || dataChannel.readyState !== "open") return;
+
+      const signatureBuffer = await hmacSHA256(command, "SuperSecretKey123!");
+      const signature = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const payload = JSON.stringify({ command, signature });
+      dataChannel.send(payload);
+
+      document.getElementById("status").innerText = "Sent command: " + command;
+    }
+
+    function activateMode(mode) {
+      if (mode === "follow_me") {
+        sendCommand("mode:follow_me");
+      } else if (mode === "manual_control") {
+        sendCommand("mode:manual_control");
+      } else if (mode === "follow_object") {
+        sendCommand("mode:follow_object");
+      } else if (mode === "factory_mode") {
+        sendCommand("mode:factory_mode");
+      }
+      document.getElementById("status").innerText = "Mode activated: " + mode;
+      document.getElementById("manualControls").style.display = (mode === "manual_control") ? "block" : "none";
+      document.getElementById("objectControls").style.display = (mode === "follow_object") ? "block" : "none";
+      document.getElementById("qrMappingContainer").style.display = (mode === "factory_mode") ? "block" : "none";
+      if (mode === "follow_object") {
+        startVoiceRecognition();
+      }
+    }
+    function selectObject() {
+      const selectedObject = document.getElementById("objectSelect").value;
+      if (selectedObject) {
+        sendCommand("mode:follow_object:" + selectedObject);
+        document.getElementById("status").innerText = "Following object: " + selectedObject;
+      }
+    }
+    function updateMotorSpeed(value) {
+      motorSpeed = value;
+      sendCommand("motorSpeed:" + motorSpeed);
+      document.getElementById("status").innerText = "Motor speed set to: " + motorSpeed;
+    }
+    function updatePan(value) {
+      panAngle = value;
+      sendCommand("servo:pan:" + panAngle);
+      document.getElementById("status").innerText = "Pan angle set to: " + panAngle;
+    }
+    function updateTilt(value) {
+      tiltAngle = value;
+      sendCommand("servo:tilt:" + tiltAngle);
+      document.getElementById("status").innerText = "Tilt angle set to: " + tiltAngle;
+    }
+    function updateLidarServo(value) {
+      sendCommand("servo:lidar:" + value);
+      document.getElementById("status").innerText = "Lidar servo angle set to: " + value;
+    }
+    function measureDistance() {
+      sendCommand("measureDistance");
+      document.getElementById("status").innerText = "Measuring distance...";
+      document.getElementById("lidarServoControl").style.display = "block";
+    }
+    function scanQR() {
+      sendCommand("scanQR");
+      document.getElementById("qrResult").innerText = "Scanning...";
+    }
+    function startVoiceRecognition() {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.onresult = (event) => {
+        const voiceCommand = event.results[0][0].transcript.toLowerCase();
+        handleVoiceCommand(voiceCommand);
+      };
+      recognition.onerror = (event) => {
+        alert("Voice recognition error: " + event.error);
+      };
+      recognition.start();
+    }
+    function handleVoiceCommand(command) {
+      const yoloClasses = [
+        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
+        "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter",
+        "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear",
+        "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase",
+        "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+        "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
+        "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut",
+        "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet",
+        "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
+        "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
+        "scissors", "teddy bear", "hair drier", "toothbrush"
+      ];
+      if (yoloClasses.includes(command)) {
+        sendCommand("mode:follow_object:" + command);
+        document.getElementById("status").innerText = "Following object: " + command;
+      } else {
+        alert("Object not recognized. Please try again.");
+      }
+    }
+    document.getElementById("captureImageBtn").addEventListener("click", function() {
+      sendCommand("captureImage");
+      document.getElementById("status").innerText = "Image capture initiated...";
+    });
+    document.addEventListener("keydown", function(event) {
+      switch (event.key) {
+        case "ArrowUp":
+          if (!speedInterval) {
+            speedInterval = setInterval(() => {
+              motorSpeed = Math.min(255, parseInt(motorSpeed) + 5);
+              updateMotorSpeed(motorSpeed);
+              document.getElementById("speedRange").value = motorSpeed;
+            }, 200);
+          }
+          sendCommand("forward");
+          break;
+        case "ArrowDown":
+          if (!speedInterval) {
+            speedInterval = setInterval(() => {
+              motorSpeed = Math.max(0, parseInt(motorSpeed) - 5);
+              updateMotorSpeed(motorSpeed);
+              document.getElementById("speedRange").value = motorSpeed;
+            }, 200);
+          }
+          sendCommand("backward");
+          break;
+        case "ArrowLeft":
+          sendCommand("left");
+          break;
+        case "ArrowRight":
+          sendCommand("right");
+          break;
+        case " ":
+          sendCommand("stop");
+          clearInterval(speedInterval);
+          speedInterval = null;
+          break;
+        case "a":
+          panAngle = Math.max(0, parseInt(panAngle) - 1);
+          document.getElementById("panRange").value = panAngle;
+          updatePan(panAngle);
+          break;
+        case "d":
+          panAngle = Math.min(180, parseInt(panAngle) + 1);
+          document.getElementById("panRange").value = panAngle;
+          updatePan(panAngle);
+          break;
+        case "w":
+          tiltAngle = Math.max(0, parseInt(tiltAngle) + 1);
+          document.getElementById("tiltRange").value = tiltAngle;
+          updateTilt(tiltAngle);
+          break;
+        case "x":
+          tiltAngle = Math.min(180, parseInt(tiltAngle) - 1);
+          document.getElementById("tiltRange").value = tiltAngle;
+          updateTilt(tiltAngle);
+          break;
+        case "Enter":
+          startVoiceRecognition();
+          break;
+        case "Home":
+          sendCommand("scanQR");
+          break;
+        case "End":
+          sendCommand("captureImage");
+          break;
+        case "Alt":
+          measureDistance();
+          break;
+      }
+    });
+    document.addEventListener("keyup", function(event) {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        clearInterval(speedInterval);
+        speedInterval = null;
+      }
+    });
+    const yoloClasses = [
+      "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
+      "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter",
+      "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear",
+      "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase",
+      "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+      "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
+      "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+      "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut",
+      "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet",
+      "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
+      "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
+      "scissors", "teddy bear", "hair drier", "toothbrush"
+    ];
+    const selectElem = document.getElementById("objectSelect");
+    selectElem.innerHTML = "<option value=''>--Select Object--</option>";
+    yoloClasses.forEach(cls => {
+      const option = document.createElement("option");
+      option.value = cls;
+      option.text = cls.charAt(0).toUpperCase() + cls.slice(1);
+      selectElem.appendChild(option);
+    });
+    
+    // --- QR Mapping Functions ---
+    let localMapping = {};
+    function addMapping() {
+      const pVal = document.getElementById("pValue").value.trim();
+      const aVal = document.getElementById("aValue").value.trim();
+      if (pVal && aVal) {
+        localMapping[pVal] = aVal;
+        document.getElementById("mappingStatus").innerText = `Added mapping: ${pVal} -> ${aVal}`;
+        updateMappingDisplay();
+        document.getElementById("pValue").value = "";
+        document.getElementById("aValue").value = "";
+      } else {
+        alert("Please enter both P and A values.");
+      }
+    }
+    function updateMapping() {
+      fetch("/updateQRMapping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mappings: Object.entries(localMapping).map(([p, a]) => ({ p, a })) })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "success") {
+          document.getElementById("mappingStatus").innerText = "Mapping updated successfully.";
+          updateMappingDisplay(data.qr_mapping);
+        } else {
+          document.getElementById("mappingStatus").innerText = "Error updating mapping.";
+        }
+      })
+      .catch(err => {
+        document.getElementById("mappingStatus").innerText = "Error: " + err;
+      });
+    }
+    function updateMappingDisplay(serverMapping) {
+      const mappingDiv = document.getElementById("currentMapping");
+      if (serverMapping) {
+        mappingDiv.innerText = "Server Mapping: " + JSON.stringify(serverMapping);
+      } else {
+        mappingDiv.innerText = "Local Mapping: " + JSON.stringify(localMapping);
+      }
+    }
+    function updateSensorData() {
+      fetch('/sensor')
+      .then(response => response.json())
+      .then(data => {
+          if(data.temperature !== null && data.pressure !== null) {
+              document.getElementById("sensorData").innerText =
+                "Temperature: " + data.temperature.toFixed(2) + " °C, " +
+                "Pressure: " + data.pressure.toFixed(2) + " Pa";
+          } else {
+              document.getElementById("sensorData").innerText = "Sensor data not available.";
+          }
+      })
+      .catch(error => {
+          console.error("Error fetching sensor data:", error);
+          document.getElementById("sensorData").innerText = "Error fetching sensor data.";
+      });
+    }
+    setInterval(updateSensorData, 1000);
+    
+    // --- Speed Graph and Current Speed Update ---
+    const ctx = document.getElementById('speedChart').getContext('2d');
+    let speedChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Speed (m/s)',
+          data: [],
+          borderColor: 'rgba(0, 123, 255, 1)',
+          backgroundColor: 'rgba(0, 123, 255, 0.1)',
+          fill: true,
+          tension: 0.4,
+        }]
+      },
+      options: {
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Time (s)'
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Speed (m/s)'
+            },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+    
+    let speedData = [];
+    let speedLabels = [];
+    let startTime = Date.now();
+    
+    async function updateSpeedData() {
+      try {
+        const response = await fetch('/speed');
+        const data = await response.json();
+        const currentSpeed = data.speed_magnitude;
+        document.getElementById('currentSpeedBox').innerText = `Current Speed: ${currentSpeed.toFixed(2)} m/s`;
+        const currentTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        speedLabels.push(currentTime);
+        speedData.push(currentSpeed);
+        if (speedLabels.length > 60) {
+          speedLabels.shift();
+          speedData.shift();
+        }
+        speedChart.data.labels = speedLabels;
+        speedChart.data.datasets[0].data = speedData;
+        speedChart.update();
+      } catch (error) {
+        console.error("Error fetching speed data:", error);
+      }
+    }
+    setInterval(updateSpeedData, 500);
+    
+    // --- Toggle Speed Details ---
+    function toggleSpeedDetails() {
+      const speedContainer = document.getElementById("speedDetailsContainer");
+      if (speedContainer.style.display === "none" || speedContainer.style.display === "") {
+        speedContainer.style.display = "block";
+      } else {
+        speedContainer.style.display = "none";
+      }
+    }
+    
+    // --- NEW: Update Color Function ---
+    function updateColor() {
+      const lowerColor = document.getElementById("lowerColor").value; // e.g., "#ff0000"
+      const upperColor = document.getElementById("upperColor").value;
+
+      if (dataChannel && dataChannel.readyState === "open") {
+        const commandPayload = {
+          command: `updateColor:${lowerColor}:${upperColor}`
+        };
+
+        hmacSHA256(commandPayload.command, "SuperSecretKey123!")
+          .then(signatureBuffer => {
+            const signature = Array.from(new Uint8Array(signatureBuffer))
+              .map(b => b.toString(16).padStart(2, '0')).join('');
+            dataChannel.send(JSON.stringify({
+              command: commandPayload.command,
+              signature
+            }));
+            document.getElementById("status").innerText = "Updated color filters.";
+          });
+      } else {
+        alert("DataChannel not open.");
+      }
+    }
+
+      
+      // Convert RGB to HSV (with H scaled to [0, 180], S and V in [0, 255])
+      function rgbToHsv(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        let max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, v = max;
+        let d = max - min;
+        s = max === 0 ? 0 : d / max;
+        if (max === min) {
+          h = 0;
+        } else {
+          switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+          }
+          h /= 6;
+        }
+        return [Math.round(h * 180), Math.round(s * 255), Math.round(v * 255)];
+      }
+      
+      const lowerRgb = hexToRgb(lowerHex);
+      const upperRgb = hexToRgb(upperHex);
+      const lowerHsv = rgbToHsv(...lowerRgb);
+      const upperHsv = rgbToHsv(...upperRgb);
+      
+      // Send new HSV ranges to the backend
+      fetch("/updateColor", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({lower: lowerHsv, upper: upperHsv})
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "success") {
+          alert("Color updated successfully.");
+        } else {
+          alert("Error updating color: " + data.message);
+        }
+      })
+      .catch(err => {
+        alert("Error: " + err);
+      });
+    }
+    let authorized = false;
+
+    async function authenticate() {
+      const password = document.getElementById("authPassword").value;
+      const response = await fetch("/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      if ((await response.text()).trim() === "OK") {
+        authorized = true;
+        document.getElementById("authContainer").style.display = "none";
+        startWebRTC(); // Only allowed after successful login
+      } else {
+        alert("? Authentication failed.");
+      }
+    }
+
+  </script>
+</body>
+</html>

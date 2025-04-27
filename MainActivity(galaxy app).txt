@@ -1,0 +1,273 @@
+package com.example.galaxycobotcontroller
+
+import android.app.Activity
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.*
+import android.util.Log
+import android.view.MotionEvent
+import android.widget.*
+import java.io.IOException
+import java.io.OutputStreamWriter
+import java.io.PrintWriter
+import java.net.InetSocketAddress
+import java.net.Socket
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+class MainActivity : Activity(), SensorEventListener {
+
+    // Hardware components
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+    private var gyroscope: Sensor? = null
+
+    // Network components
+    private var socket: Socket? = null
+    private var writer: PrintWriter? = null
+    private var connectionThread: Thread? = null
+    private var shouldReconnect = true
+
+    // UI components
+    private lateinit var statusText: TextView
+    private lateinit var knockThresholdInput: EditText
+    private lateinit var tiltThresholdInput: EditText
+
+    // Control parameters
+    private var baseSpeed = 60
+    private var currentSpeed = 60
+    private var isStopped = false
+    private var knockThreshold = 14f
+    private var tiltThreshold = 0.2f
+
+    // Gesture tracking
+    private var lastFistTime = 0L
+    private var fistCount = 0
+
+    // Threading
+    private val handler = Handler(Looper.getMainLooper())
+    private var repeatRunnable: Runnable? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        // Initialize UI components
+        statusText = findViewById(R.id.statusText)
+        knockThresholdInput = findViewById(R.id.knockThreshold)
+        tiltThresholdInput = findViewById(R.id.tiltThreshold)
+
+        // Set initial threshold values in UI
+        knockThresholdInput.setText(knockThreshold.toString())
+        tiltThresholdInput.setText(tiltThreshold.toString())
+
+        // Initialize sensors
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+
+        // Setup button listeners
+        setupButtonControls()
+
+        // Start network connection
+        startNetworkConnection()
+    }
+
+    private fun setupButtonControls() {
+        // Directional buttons
+        findViewById<Button>(R.id.btnUp).setOnTouchListener { _, event ->
+            handleRepeatButton(event, "motorSpeed:forward:$baseSpeed")
+            true
+        }
+
+        findViewById<Button>(R.id.btnDown).setOnTouchListener { _, event ->
+            handleRepeatButton(event, "motorSpeed:backward:$baseSpeed")
+            true
+        }
+
+        // Instant command buttons
+        findViewById<Button>(R.id.btnLeft).setOnClickListener { sendCommand("left") }
+        findViewById<Button>(R.id.btnRight).setOnClickListener { sendCommand("right") }
+        findViewById<Button>(R.id.btnStop).setOnClickListener { sendCommand("stop") }
+
+        // Settings update
+        findViewById<Button>(R.id.btnUpdateSettings).setOnClickListener {
+            updateThresholdsFromUI()
+        }
+    }
+
+    private fun handleRepeatButton(event: MotionEvent, command: String) {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                sendCommand(command)
+                startRepeatingCommand(command)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                stopRepeatingCommand()
+            }
+        }
+    }
+
+    private fun startRepeatingCommand(command: String) {
+        repeatRunnable = object : Runnable {
+            override fun run() {
+                sendCommand(command)
+                handler.postDelayed(this, 200)
+            }
+        }
+        handler.post(repeatRunnable!!)
+    }
+
+    private fun stopRepeatingCommand() {
+        repeatRunnable?.let { handler.removeCallbacks(it) }
+    }
+
+    private fun startNetworkConnection() {
+        connectionThread = Thread {
+            while (shouldReconnect) {
+                try {
+                    runOnUiThread { statusText.text = "Connecting..." }
+
+                    // Create fresh socket connection
+                    Socket().apply {
+                        connect(InetSocketAddress("192.168.1.100", 6000), 3000)
+                        socket = this
+                        writer = PrintWriter(OutputStreamWriter(getOutputStream()), true)
+
+                        runOnUiThread { 
+                            statusText.text = "Connected" 
+                            isStopped = false
+                        }
+
+                        // Keep connection alive
+                        while (isConnected && !isClosed && shouldReconnect) {
+                            Thread.sleep(1000)
+                        }
+                    }
+                } catch (e: IOException) {
+                    runOnUiThread { statusText.text = "Connection failed" }
+                    Thread.sleep(3000)
+                } finally {
+                    closeNetworkResources()
+                }
+            }
+        }.apply { start() }
+    }
+
+    private fun closeNetworkResources() {
+        try {
+            writer?.close()
+            socket?.close()
+        } catch (e: IOException) {
+            Log.e("Network", "Error closing resources: ${e.message}")
+        }
+    }
+
+    private fun sendCommand(command: String) {
+        try {
+            writer?.let {
+                it.println(command)
+                it.flush()
+                Log.d("Command", "Sent: $command")
+            } ?: run {
+                Log.e("Command", "Writer is null - not connected")
+                runOnUiThread { statusText.text = "Not connected" }
+            }
+        } catch (e: Exception) {
+            Log.e("Command", "Failed to send: $command - ${e.message}")
+            runOnUiThread { statusText.text = "Send failed" }
+        }
+    }
+
+    private fun updateThresholdsFromUI() {
+        try {
+            knockThresholdInput.text.toString().toFloat().let {
+                if (it in 5f..20f) knockThreshold = it
+            }
+            tiltThresholdInput.text.toString().toFloat().let {
+                if (it in 0.1f..1f) tiltThreshold = it
+            }
+            Toast.makeText(this, "Thresholds updated", Toast.LENGTH_SHORT).show()
+        } catch (e: NumberFormatException) {
+            Toast.makeText(this, "Invalid threshold values", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        when (event.sensor.type) {
+            Sensor.TYPE_ACCELEROMETER -> handleAccelerometerData(event.values)
+            Sensor.TYPE_GYROSCOPE -> handleGyroscopeData(event.values)
+        }
+    }
+
+    private fun handleAccelerometerData(values: FloatArray) {
+        val y = values[1] // Tilt (forward/backward)
+        val z = values[2] // Knock (fist detection)
+
+        // Double fist detection for emergency stop
+        if (abs(z) > knockThreshold) {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastFistTime < 600) { // 600ms window
+                if (++fistCount >= 2) {
+                    toggleEmergencyStop()
+                    fistCount = 0
+                }
+            } else {
+                fistCount = 1
+            }
+            lastFistTime = currentTime
+        }
+
+        // Speed adjustment based on tilt
+        if (!isStopped) {
+            currentSpeed = (baseSpeed + y * 40).roundToInt().coerceIn(30, 100)
+            when {
+                y < -1.5 -> sendCommand("motorSpeed:forward:$currentSpeed")
+                y > 1.5 -> sendCommand("motorSpeed:backward:$currentSpeed")
+            }
+        }
+    }
+
+    private fun toggleEmergencyStop() {
+        isStopped = !isStopped
+        sendCommand(if (isStopped) "stop" else "resume")
+        runOnUiThread {
+            statusText.text = if (isStopped) "!! EMERGENCY STOP !!" else "Normal operation"
+        }
+    }
+
+    private fun handleGyroscopeData(values: FloatArray) {
+        if (isStopped) return
+        
+        val zRotation = values[2] // Left/right tilt
+        if (abs(zRotation) > tiltThreshold) {
+            val direction = if (zRotation > 0) "right" else "left"
+            val strength = (abs(zRotation) * 100).roundToInt().coerceIn(0, 100)
+            sendCommand("motorSpeed:$direction:$strength")
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    override fun onResume() {
+        super.onResume()
+        accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        gyroscope?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        shouldReconnect = false
+        connectionThread?.interrupt()
+        handler.removeCallbacksAndMessages(null)
+        closeNetworkResources()
+    }
+}

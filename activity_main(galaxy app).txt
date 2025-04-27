@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="8dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Connection status -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/status_not_connected"
+        android:textSize="14sp"
+        android:padding="8dp" />
+
+    <!-- Up button -->
+    <Button
+        android:id="@+id/btnUp"
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="100dp"
+        android:layout_height="wrap_content"
+        android:text="@string/arrow_up" />
+
+    <!-- Left, Stop, Right row -->
+    <LinearLayout
+        style="?android:attr/buttonBarStyle"
+        android:orientation="horizontal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingTop="8dp">
+
+        <Button
+            android:id="@+id/btnLeft"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:text="@string/arrow_left" />
+
+        <Button
+            android:id="@+id/btnStop"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:text="@string/stop_button" />
+
+        <Button
+            android:id="@+id/btnRight"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:text="@string/arrow_right" />
+
+    </LinearLayout>
+
+    <!-- Down button -->
+    <Button
+        android:id="@+id/btnDown"
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="100dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/arrow_down" />
+
+    <!-- Threshold inputs -->
+    <EditText
+        android:id="@+id/knockThreshold"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:hint="@string/knock_threshold"
+        android:inputType="numberDecimal"
+        android:layout_marginTop="16dp"/>
+
+    <EditText
+        android:id="@+id/tiltThreshold"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:hint="@string/tilt_threshold"
+        android:inputType="numberDecimal"
+        android:layout_marginTop="8dp"/>
+
+    <!-- Update button -->
+    <Button
+        android:id="@+id/btnUpdateSettings"
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/update_settings"
+        android:layout_marginTop="12dp"/>
+
+</LinearLayout>
